@@ -357,35 +357,6 @@ class QQBotWSManager:
         if not token:
             raise Exception("BOT凭证获取失败")
         
-        # 检查是否启用沙盒模式
-        try:
-            from config import SANDBOX_MODE
-            if SANDBOX_MODE:
-                sandbox_gateway = 'https://sandbox.api.sgroup.qq.com/gateway/bot'
-                headers = {"Authorization": f"QQBot {token}", "Content-Type": "application/json"}
-                last_error = None
-                for attempt in range(3):
-                    try:
-                        resp = requests.get(sandbox_gateway, headers=headers, timeout=30)
-                        if resp.status_code == 200:
-                            url = resp.json().get('url')
-                            if url:
-                                return url
-                        try:
-                            resp_data = resp.json()
-                        except Exception:
-                            resp_data = resp.text.strip()
-                        last_error = f"获取沙盒网关失败，HTTP {resp.status_code}，响应：{resp_data}"
-                    except Exception as e:
-                        last_error = f"获取沙盒网关异常：{e}"
-                    if attempt < 2:
-                        time.sleep(3 + attempt)
-                if last_error:
-                    raise Exception(last_error)
-        except ImportError:
-            pass
-        
-        # 使用正式环境网关
         headers = {"Authorization": f"QQBot {token}", "Content-Type": "application/json"}
         last_error = None
         for attempt in range(3):

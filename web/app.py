@@ -27,7 +27,7 @@ _BASE_CSP = {
     'style-src': ["'self'", "'unsafe-inline'", "cdn.jsdelivr.net", "cdnjs.cloudflare.com"],
     'font-src': ["'self'", "cdn.jsdelivr.net", "cdnjs.cloudflare.com"],
     'img-src': ["'self'", "data:", "*.myqcloud.com", "thirdqq.qlogo.cn", "*.qlogo.cn", "http://*.qlogo.cn", "*.nt.qq.com.cn", "api.2dcode.biz"],
-    'connect-src': ["'self'", "i.elaina.vin"]
+    'connect-src': ["'self'"]
 }
 
 _SECURITY_HEADERS_BASE = (
@@ -188,13 +188,6 @@ from web.tools.config_handler import (handle_get_config, handle_parse_config, ha
     handle_get_message_templates, handle_save_message_templates, handle_parse_message_templates)
 from web.tools.plugin_manager import (handle_toggle_plugin, handle_read_plugin, handle_save_plugin,
     handle_create_plugin, handle_create_plugin_folder, handle_get_plugin_folders, handle_upload_plugin, scan_plugins_internal)
-from web.tools.plugin_market_handler import (handle_market_submit, handle_market_list, handle_market_pending,
-    handle_market_review, handle_market_update_status, handle_market_delete, handle_market_categories,
-    handle_market_export, handle_market_download, handle_market_preview, handle_market_install, handle_market_local_plugins,
-    handle_market_upload_local, handle_market_register, handle_market_login, handle_market_user_info,
-    handle_market_plugin_detail, handle_market_author_update, handle_market_author_delete, handle_market_update_local,
-    handle_market_get_source, handle_market_save_source, handle_local_plugin_read, handle_local_plugin_save,
-    handle_market_upload_direct, handle_market_update_plugin_code)
 
 status_routes.set_restart_function(execute_bot_restart)
 check_openapi_login = lambda uid: openapi_user_data.get(uid)
@@ -241,11 +234,6 @@ def index():
     for h, v in _get_security_headers():
         response.headers[h] = v
     return response
-
-@web.route('/plugin_market')
-@full_auth
-def plugin_market_page():
-    return render_template('pc/plugin_market.html')
 
 @web.route('/plugin/<plugin_path>')
 @full_auth
@@ -512,136 +500,6 @@ def get_plugin_folders():
 @full_auth
 def upload_plugin():
     return handle_upload_plugin(add_framework_log)
-
-@web.route('/api/market/submit', methods=['POST'])
-@safe_route
-def market_submit():
-    return handle_market_submit()
-
-@web.route('/api/market/list', methods=['GET'])
-@safe_route
-def market_list():
-    return handle_market_list()
-
-@web.route('/api/market/pending', methods=['GET'])
-@safe_route
-def market_pending():
-    return handle_market_pending()
-
-@web.route('/api/market/review', methods=['POST'])
-@safe_route
-def market_review():
-    return handle_market_review()
-
-@web.route('/api/market/update_status', methods=['POST'])
-@safe_route
-def market_update_status():
-    return handle_market_update_status()
-
-@web.route('/api/market/delete', methods=['POST'])
-@safe_route
-def market_delete():
-    return handle_market_delete()
-
-@web.route('/api/market/categories', methods=['GET'])
-@safe_route
-def market_categories():
-    return handle_market_categories()
-
-@web.route('/api/market/export', methods=['GET'])
-@safe_route
-def market_export():
-    return handle_market_export()
-
-@web.route('/api/market/download', methods=['POST'])
-@safe_route
-def market_download():
-    return handle_market_download()
-
-@web.route('/api/market/preview', methods=['POST'])
-@safe_route
-def market_preview():
-    return handle_market_preview()
-
-@web.route('/api/market/install', methods=['POST'])
-@full_auth
-def market_install():
-    return handle_market_install()
-
-@web.route('/api/market/local_plugins', methods=['GET'])
-@full_auth
-def market_local_plugins():
-    return handle_market_local_plugins()
-
-@web.route('/api/market/upload_local', methods=['POST'])
-@full_auth
-def market_upload_local():
-    return handle_market_upload_local()
-
-@web.route('/api/market/register', methods=['POST'])
-@safe_route
-def market_register():
-    return handle_market_register()
-
-@web.route('/api/market/login', methods=['POST'])
-@safe_route
-def market_login():
-    return handle_market_login()
-
-@web.route('/api/market/user_info', methods=['POST'])
-@safe_route
-def market_user_info():
-    return handle_market_user_info()
-
-@web.route('/api/market/plugin_detail', methods=['POST'])
-@safe_route
-def market_plugin_detail():
-    return handle_market_plugin_detail()
-
-@web.route('/api/market/author_update', methods=['POST'])
-@safe_route
-def market_author_update():
-    return handle_market_author_update()
-
-@web.route('/api/market/author_delete', methods=['POST'])
-@safe_route
-def market_author_delete():
-    return handle_market_author_delete()
-
-@web.route('/api/market/update_local', methods=['POST'])
-@safe_route
-def market_update_local():
-    return handle_market_update_local()
-
-@web.route('/api/market/get_source', methods=['POST'])
-@safe_route
-def market_get_source():
-    return handle_market_get_source()
-
-@web.route('/api/market/save_source', methods=['POST'])
-@safe_route
-def market_save_source():
-    return handle_market_save_source()
-
-@web.route('/api/market/local_read', methods=['POST'])
-@safe_route
-def market_local_read():
-    return handle_local_plugin_read()
-
-@web.route('/api/market/local_save', methods=['POST'])
-@safe_route
-def market_local_save():
-    return handle_local_plugin_save()
-
-@web.route('/api/market/upload_direct', methods=['POST'])
-@safe_route
-def market_upload_direct():
-    return handle_market_upload_direct()
-
-@web.route('/api/market/update_plugin_code', methods=['POST'])
-@safe_route
-def market_update_plugin_code():
-    return handle_market_update_plugin_code()
 
 @web.route('/openapi/start_login', methods=['POST'])
 @simple_auth

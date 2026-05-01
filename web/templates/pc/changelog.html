@@ -145,8 +145,8 @@
             <div class="card-icon"><i class="bi bi-cloud-download"></i></div>
             <div class="card-content">
                 <div class="card-label">下载源</div>
-                <div class="card-value" id="current-source-name">加载中...</div>
-                <div class="card-sub" id="current-source-desc"></div>
+                <div class="card-value" id="current-source-name">GitHub 镜像</div>
+                <div class="card-sub" id="current-source-desc">自动选择最快镜像</div>
             </div>
         </div>
     </div>
@@ -178,39 +178,42 @@
 
 {% block scripts %}
 <script>
-let changelogData = [], latestVersion = null, currentSource = 'proxy', availableSources = {}, pendingConfigDiff = null, selectedFile = null;
+let changelogData = [], latestVersion = null, pendingConfigDiff = null, selectedFile = null, customMirror = '';
 const getToken = () => new URLSearchParams(window.location.search).get('token') || '';
 
 document.addEventListener('DOMContentLoaded', function() {
-    loadDownloadSources();
     loadChangelog();
     loadVersionInfo();
+    loadMirrorInfo();
 });
 
-async function loadDownloadSources() {
+async function loadMirrorInfo() {
     try {
         const result = await (await fetch(`/web/api/update/sources?token=${getToken()}`)).json();
         if (result.success) {
-            availableSources = result.data.sources;
-            currentSource = result.data.current;
-            updateSourceDisplay();
+            customMirror = result.data.custom_mirror || '';
+            document.getElementById('current-source-name').textContent = customMirror || 'GitHub 镜像';
+            document.getElementById('current-source-desc').textContent = customMirror ? '自定义镜像' : '自动选择最快镜像';
         }
     } catch (e) {
-        console.error('加载下载源失败:', e);
-    }
-}
-
-function updateSourceDisplay() {
-    const source = availableSources[currentSource];
-    if (source) {
-        document.getElementById('current-source-name').textContent = source.name;
-        document.getElementById('current-source-desc').textContent = source.description;
+        console.error('加载镜像信息失败:', e);
     }
 }
 
 function showSourceSelector() {
-    document.getElementById('source-modal').style.display = 'flex';
-    renderSourceList();
+    const mirror = prompt('输入自定义镜像 URL (留空则自动选择):', customMirror);
+    if (mirror === null) return;
+    fetch(`/web/api/update/sources?token=${getToken()}`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({mirror: mirror.trim()})
+    }).then(r => r.json()).then(r => {
+        if (r.success) {
+            customMirror = mirror.trim();
+            document.getElementById('current-source-name').textContent = customMirror || 'GitHub 镜像';
+            document.getElementById('current-source-desc').textContent = customMirror ? '自定义镜像' : '自动选择最快镜像';
+            showToast('镜像已保存', 'success');
+        }
+    });
 }
 
 function closeSourceModal() {
@@ -330,87 +333,11 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function renderSourceList() {
-    const container = document.getElementById('source-list');
-    if (!Object.keys(availableSources).length) {
-        container.innerHTML = '<div class="empty-state">暂无可用下载源</div>';
-        return;
-    }
-    
-    // 定义显示顺序
-    const sourceOrder = ['proxy', 'github', 'ghfast', 'github-sha'];
-    const orderedSources = sourceOrder
-        .filter(key => availableSources[key])
-        .map(key => [key, availableSources[key]]);
-    
-    container.innerHTML = orderedSources.map(([key, source]) => `
-        <div class="source-item ${key === currentSource ? 'active' : ''}" data-source="${key}">
-            <div class="source-info">
-                <div class="source-name">
-                    ${source.name}
-                    ${key === currentSource ? '<span class="current-badge">当前</span>' : ''}
-                </div>
-                <div class="source-desc">${source.description}</div>
-            </div>
-            <div class="source-actions">
-                <button class="test-btn" onclick="testSource('${key}', event)">
-                    <i class="bi bi-speedometer2"></i> 测试
-                </button>
-                ${key !== currentSource ? `<button class="select-btn" onclick="selectSource('${key}')">
-                    <i class="bi bi-check-lg"></i> 选择
-                </button>` : ''}
-            </div>
-            <div class="source-status" id="source-status-${key}"></div>
-        </div>
-    `).join('');
-}
-
-async function testSource(source, event) {
-    if (event) event.stopPropagation();
-    const statusEl = document.getElementById(`source-status-${source}`);
-    statusEl.innerHTML = '<i class="bi bi-hourglass-split"></i> 测试中...';
-    statusEl.className = 'source-status testing';
-    
-    try {
-        const result = await (await fetch(`/web/api/update/test_source?token=${getToken()}`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({source})
-        })).json();
-        
-        if (result.success && result.data.success) {
-            statusEl.innerHTML = `<i class="bi bi-check-circle-fill"></i> ${result.data.message}`;
-            statusEl.className = 'source-status success';
-        } else {
-            statusEl.innerHTML = `<i class="bi bi-x-circle-fill"></i> ${result.data?.message || result.message}`;
-            statusEl.className = 'source-status error';
-        }
-    } catch (e) {
-        statusEl.innerHTML = `<i class="bi bi-x-circle-fill"></i> 测试失败`;
-        statusEl.className = 'source-status error';
-    }
+    // No longer needed, using prompt-based mirror selector
 }
 
 async function selectSource(source) {
-    try {
-        const result = await (await fetch(`/web/api/update/sources?token=${getToken()}`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({source})
-        })).json();
-        
-        if (result.success) {
-            currentSource = source;
-            updateSourceDisplay();
-            renderSourceList();
-            showToast(`已切换到 ${availableSources[source].name}`, 'success');
-            // 重新加载更新日志
-            loadChangelog();
-        } else {
-            showToast(result.message, 'error');
-        }
-    } catch (e) {
-        showToast('切换下载源失败', 'error');
-    }
+    showSourceSelector();
 }
 
 async function loadVersionInfo() {
@@ -485,10 +412,10 @@ let pendingForceUpdate = false;
 
 function showUpdateConfirmModal(isForce) {
     pendingForceUpdate = isForce;
-    const sourceName = availableSources[currentSource]?.name || currentSource;
+    const sourceName = customMirror || 'GitHub 镜像 (自动)';
     const tip = isForce 
-        ? `将直接下载最新版本，不检查当前版本。<br>当前下载源: <strong>${sourceName}</strong>`
-        : `当前下载源: <strong>${sourceName}</strong>`;
+        ? `将直接下载最新版本，不检查当前版本。<br>下载源: <strong>${sourceName}</strong>`
+        : `下载源: <strong>${sourceName}</strong>`;
     document.getElementById('update-confirm-tip').innerHTML = tip;
     document.getElementById('skip-backup-checkbox').checked = false;
     document.getElementById('update-confirm-modal').style.display = 'flex';
@@ -509,7 +436,7 @@ async function confirmUpdate() {
         const result = await (await fetch(`/web/api/update/start?token=${getToken()}`, { 
             method: 'POST', 
             headers: {'Content-Type': 'application/json'}, 
-            body: JSON.stringify({source: currentSource, force: pendingForceUpdate, skip_backup: skipBackup})
+            body: JSON.stringify({mirror: customMirror, force: pendingForceUpdate, skip_backup: skipBackup})
         })).json();
         if (result.success) pollUpdateProgress();
         else throw new Error(result.message);

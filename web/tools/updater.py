@@ -5,37 +5,26 @@ import os, json, shutil, zipfile, logging, requests, fnmatch
 from datetime import datetime
 from pathlib import Path
 
-GITHUB_REPO = "lengxi-root/ElainaBot"
+GITHUB_REPO = "ElainaCore/ElainaBot"
 GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}"
+GITHUB_DOWNLOAD_URL = f"https://github.com/{GITHUB_REPO}/archive/main.zip"
+GITHUB_SHA_URL = f"https://codeload.github.com/{GITHUB_REPO}/zip/{{version}}"
 
-DOWNLOAD_SOURCES = {
-    'proxy': {
-        'name': '代理服务器 (推荐)',
-        'description': '通过 i.elaina.vin 代理下载，国内访问更稳定',
-        'api_url': 'https://i.elaina.vin/api/elainabot/',
-        'download_url': 'https://i.elaina.vin/api/elainabot/?ver={version}',
-    },
-    'github': {
-        'name': 'GitHub 直连',
-        'description': '直接从 GitHub 下载，需要能访问 GitHub',
-        'api_url': f'{GITHUB_API_URL}/commits',
-        'download_url': f'https://codeload.github.com/{GITHUB_REPO}/zip/refs/heads/main',
-        'always_latest': True,
-    },
-    'ghfast': {
-        'name': 'GitHub 加速 (ghfast.top)',
-        'description': '通过 ghfast.top 加速下载',
-        'api_url': 'https://i.elaina.vin/api/elainabot/',
-        'download_url': f'https://ghfast.top/https://github.com/{GITHUB_REPO}/archive/main.zip',
-        'always_latest': True,
-    },
-    'github-sha': {
-        'name': 'GitHub 直连 (按版本)',
-        'description': '按 commit SHA 下载指定版本，可回退历史版本',
-        'api_url': f'{GITHUB_API_URL}/commits',
-        'download_url': f'https://codeload.github.com/{GITHUB_REPO}/zip/{{version}}',
-    },
-}
+GITHUB_API_MIRRORS = [
+    f'https://api.github.com/repos/{GITHUB_REPO}',
+    f'https://ghproxy.cc/https://api.github.com/repos/{GITHUB_REPO}',
+    f'https://gh-proxy.com/https://api.github.com/repos/{GITHUB_REPO}',
+    f'https://ghproxy.net/https://api.github.com/repos/{GITHUB_REPO}',
+    f'https://mirror.ghproxy.com/https://api.github.com/repos/{GITHUB_REPO}',
+]
+
+GITHUB_FILE_MIRRORS = [
+    'https://ghproxy.cc/',
+    'https://gh-proxy.com/',
+    'https://ghproxy.net/',
+    'https://mirror.ghproxy.com/',
+    'https://ghfast.top/',
+]
 
 class FrameworkUpdater:
     def __init__(self):
@@ -46,7 +35,7 @@ class FrameworkUpdater:
         
         self.config = self._load_config()
         self.current_version = self._load_version()
-        self.download_source = self._load_setting('download_source', 'proxy')
+        self.custom_mirror = self._load_setting('custom_mirror', '')
         self.current_progress = {'stage': 'idle', 'message': '', 'progress': 0, 'is_updating': False}
     
     def _load_config(self):
@@ -92,65 +81,73 @@ class FrameworkUpdater:
     def get_progress(self):
         return self.current_progress.copy()
     
-    def set_download_source(self, source):
-        if source in DOWNLOAD_SOURCES:
-            self.download_source = source
-            self._save_setting('download_source', source)
-            return True
-        return False
-    
-    def get_available_sources(self):
-        return {k: {'name': v['name'], 'description': v['description']} for k, v in DOWNLOAD_SOURCES.items()}
-    
     def get_version_info(self):
         try:
-            return json.load(open(self.version_file, encoding='utf-8'))
+            info = json.load(open(self.version_file, encoding='utf-8'))
+            info['custom_mirror'] = self.custom_mirror
+            return info
         except:
-            return {'version': self.current_version, 'update_time': 'unknown'}
-    
-    def test_source_connection(self, source=None):
-        source = source or self.download_source
-        if source not in DOWNLOAD_SOURCES:
-            return {'success': False, 'message': '无效的下载源'}
-        try:
-            start = datetime.now()
-            resp = requests.get(DOWNLOAD_SOURCES[source]['api_url'], timeout=10)
-            elapsed = (datetime.now() - start).total_seconds()
-            if resp.status_code == 200:
-                return {'success': True, 'message': f'连接成功，响应时间: {elapsed:.2f}秒', 'latency': elapsed}
-            return {'success': False, 'message': f'服务器返回错误: {resp.status_code}'}
-        except requests.exceptions.Timeout:
-            return {'success': False, 'message': '连接超时'}
-        except Exception as e:
-            return {'success': False, 'message': f'连接失败: {e}'}
-    
+            return {'version': self.current_version, 'update_time': 'unknown', 'custom_mirror': self.custom_mirror}
+
+    def set_custom_mirror(self, mirror):
+        self.custom_mirror = mirror or ''
+        self._save_setting('custom_mirror', self.custom_mirror)
+
+    def _fetch_api(self, path=''):
+        """通过多个 GitHub API 镜像获取数据"""
+        headers = {'User-Agent': 'ElainaBot/1.0', 'Accept': 'application/vnd.github+json'}
+        urls = [base + path for base in GITHUB_API_MIRRORS]
+        for u in urls:
+            try:
+                resp = requests.get(u, headers=headers, timeout=15)
+                if resp.status_code == 200:
+                    return resp.json()
+            except Exception:
+                continue
+        return None
+
+    def _pick_download_url(self, original_url):
+        """选择可用的文件镜像"""
+        if self.custom_mirror:
+            return self.custom_mirror.rstrip('/') + '/' + original_url
+        for m in GITHUB_FILE_MIRRORS:
+            try:
+                test_url = m.rstrip('/') + '/' + original_url
+                resp = requests.head(test_url, timeout=5, allow_redirects=True)
+                if resp.status_code < 400:
+                    return test_url
+            except Exception:
+                continue
+        return original_url
+
     def check_for_updates(self):
-        source_config = DOWNLOAD_SOURCES.get(self.download_source, DOWNLOAD_SOURCES['proxy'])
         try:
-            self._report_progress('checking', f'正在检查更新...', 0)
-            resp = requests.get(source_config['api_url'], timeout=15)
-            commits = resp.json()
-            if not commits:
+            self._report_progress('checking', '正在检查更新...', 0)
+            commits = self._fetch_api('/commits?per_page=10')
+            if not commits or not isinstance(commits, list):
+                self._report_progress('idle', '', 0)
                 return {'has_update': False, 'error': '无法获取更新信息'}
-            
+
             latest = commits[0].get('sha', '')[:8]
             current = self.current_version[:8] if len(self.current_version) >= 8 else self.current_version
             has_update = (current != latest and self.current_version != 'unknown') or self.current_version == 'unknown'
-            
+
+            self._report_progress('idle', '', 0)
             return {'has_update': has_update, 'latest_version': latest, 'current_version': self.current_version,
-                    'changelog': commits[:10], 'error': None, 'source': self.download_source}
+                    'changelog': commits[:10], 'error': None}
         except Exception as e:
-            return {'has_update': False, 'error': str(e), 'source': self.download_source}
+            self._report_progress('idle', '', 0)
+            return {'has_update': False, 'error': str(e)}
     
     def download_update(self, version):
-        source_config = DOWNLOAD_SOURCES.get(self.download_source, DOWNLOAD_SOURCES['proxy'])
         try:
             self._report_progress('downloading', '正在下载...', 5)
             temp_dir = self.base_dir / "data" / "temp_update"
             temp_dir.mkdir(exist_ok=True)
             zip_file = temp_dir / f"{version}.zip"
-            
-            url = source_config['download_url'] if source_config.get('always_latest') else source_config['download_url'].format(version=version)
+
+            raw_url = GITHUB_SHA_URL.format(version=version)
+            url = self._pick_download_url(raw_url)
             resp = requests.get(url, stream=True, timeout=120)
             resp.raise_for_status()
             
@@ -389,13 +386,11 @@ class FrameworkUpdater:
         return self.update_to_version(check['latest_version'], skip_backup=skip_backup)
     
     def force_update(self, skip_backup=False):
-        """强制更新到最新版本，不检查是否已是最新"""
-        source_config = DOWNLOAD_SOURCES.get(self.download_source, DOWNLOAD_SOURCES['proxy'])
+        """强制更新到最新版本"""
         try:
             self._report_progress('checking', '获取最新版本...', 0)
-            resp = requests.get(source_config['api_url'], timeout=15)
-            commits = resp.json()
-            if not commits:
+            commits = self._fetch_api('/commits?per_page=1')
+            if not commits or not isinstance(commits, list):
                 return {'success': False, 'message': '无法获取版本信息'}
             latest = commits[0].get('sha', '')[:8]
             return self.update_to_version(latest, skip_backup=skip_backup)

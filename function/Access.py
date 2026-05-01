@@ -5,16 +5,10 @@ import json, requests, os, sys, time, threading
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import appid, secret
 
-try:
-    from config import SANDBOX_MODE
-except ImportError:
-    SANDBOX_MODE = False
-
 _token_info = {'access_token': None, 'expires_in': 0, 'last_update': 0}
 _session = requests.Session()
 _TOKEN_URL = "https://bots.qq.com/app/getAppAccessToken"
 _API_BASE = "https://api.sgroup.qq.com"
-_SANDBOX_API_BASE = "https://sandbox.api.sgroup.qq.com"
 _DEFAULT_HEADERS = {'Content-Type': 'application/json'}
 _TOKEN_PAYLOAD = {"appId": appid, "clientSecret": secret}
 _TOKEN_REFRESH_BUFFER = 60
@@ -75,41 +69,9 @@ def BOT凭证():
 
 threading.Thread(target=定时更新Token, daemon=True).start()
 
-def is_sandbox_group(group_id):
-    """检查是否为沙盒群
-    - 如果 SANDBOX_MODE = True，所有群都是沙盒群
-    - 如果 SANDBOX_MODE = False，只有 data/sandbox.json 中设置的群是沙盒群
-    """
-    # 如果开启了沙盒模式，所有群都使用沙盒 API
-    if SANDBOX_MODE:
-        return True
-    
-    # 否则只检查是否在沙盒群列表中（只会有一个群）
-    try:
-        import os
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        sandbox_file = os.path.join(base_dir, 'data', 'sandbox.json')
-        
-        if not os.path.exists(sandbox_file):
-            return False
-        
-        with open(sandbox_file, 'r', encoding='utf-8') as f:
-            sandbox_data = json.load(f)
-            sandbox_group = sandbox_data.get('sandbox_group', '')  # 改为单个群ID
-            return str(group_id) == str(sandbox_group) if sandbox_group else False
-    except:
-        return False
-
-def get_api_base(group_id=None):
-    """根据群ID获取API基础地址"""
-    if group_id and is_sandbox_group(group_id):
-        return _SANDBOX_API_BASE
-    return _API_BASE
-
 def BOTAPI(Address, method, json_data, group_id=None):
-    """发送API请求，支持沙盒模式"""
-    api_base = get_api_base(group_id)
-    return curl(f"{api_base}{Address}", method, 
+    """发送API请求"""
+    return curl(f"{_API_BASE}{Address}", method, 
                 {"Authorization": f"QQBot {BOT凭证()}", 'Content-Type': 'application/json'}, json_data)
 
 def Json(content):

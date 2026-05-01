@@ -662,7 +662,6 @@ class MessageEvent:
                 payload = result.get('payload', payload)
             except:
                 pass
-        # 主动消息不走沙盒路由（传 None），被动消息按原逻辑
         if proactive_group_id is not None:
             group_id = None
         else:
