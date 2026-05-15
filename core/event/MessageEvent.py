@@ -27,6 +27,11 @@ try:
 except ImportError:
     BUTTON_ENTER_TO_SEND = False
 
+try:
+    from config import PROCESS_BOT_MESSAGE
+except ImportError:
+    PROCESS_BOT_MESSAGE = False
+
 def _swap_ids(uid, unid, should_swap):
     return (unid, uid, uid) if should_swap and unid else (uid, unid or uid, uid)
 
@@ -198,12 +203,15 @@ class MessageEvent:
         self.user_id, self.union_openid, self.raw_user_id = _swap_ids(
             self.get('d/author/id'), self.get('d/author/union_openid'), USE_UNION_ID_FOR_GROUP)
         self.author_username = self.get('d/author/username')
+        self.author_is_bot = bool(self.get('d/author/bot'))
         self.group_id = self.get('d/group_id') or self.get('d/group_openid')
         self.guild_id = None
         self.is_group, self.is_private = True, False
         mentions = self.get('d/mentions')
         self.mentions = mentions if isinstance(mentions, list) else []
         self.is_at_bot = any(m.get('is_you', False) for m in self.mentions)
+        if self.author_is_bot and not PROCESS_BOT_MESSAGE:
+            self.ignore = True
 
     def _parse_direct_message(self):
         self.message_type = self.DIRECT_MESSAGE
