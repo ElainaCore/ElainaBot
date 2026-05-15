@@ -30,7 +30,7 @@ except ImportError:
 def _swap_ids(uid, unid, should_swap):
     return (unid, uid, uid) if should_swap and unid else (uid, unid or uid, uid)
 
-_MSG_TYPES_WITH_MSG_ID = frozenset(['GROUP_AT_MESSAGE_CREATE', 'C2C_MESSAGE_CREATE', 'AT_MESSAGE_CREATE', 'DIRECT_MESSAGE_CREATE'])
+_MSG_TYPES_WITH_MSG_ID = frozenset(['GROUP_AT_MESSAGE_CREATE', 'C2C_MESSAGE_CREATE', 'AT_MESSAGE_CREATE', 'DIRECT_MESSAGE_CREATE', 'GROUP_MESSAGE_CREATE'])
 _MSG_TYPES_WITH_EVENT_ID = frozenset(['INTERACTION_CREATE', 'GROUP_ADD_ROBOT', 'FRIEND_ADD'])
 
 class MessageEvent:
@@ -43,6 +43,7 @@ class MessageEvent:
     GROUP_DEL_ROBOT = 'GROUP_DEL_ROBOT'
     FRIEND_ADD = 'FRIEND_ADD'
     FRIEND_DEL = 'FRIEND_DEL'
+    GROUP_MESSAGE_CREATE = 'GROUP_MESSAGE_CREATE'
     UNKNOWN_MESSAGE = 'UNKNOWN'
 
     _MESSAGE_TYPE_PARSERS = {
@@ -55,6 +56,7 @@ class MessageEvent:
         GROUP_DEL_ROBOT: '_parse_group_del_robot',
         FRIEND_ADD: '_parse_friend_add',
         FRIEND_DEL: '_parse_friend_del',
+        GROUP_MESSAGE_CREATE: '_parse_group_message_create',
     }
 
     _BASE_ENDPOINTS = {
@@ -67,7 +69,8 @@ class MessageEvent:
     _MESSAGE_TYPE_TO_ENDPOINT = {
         GROUP_MESSAGE: 'group', DIRECT_MESSAGE: 'user', INTERACTION: 'group',
         CHANNEL_MESSAGE: 'channel', CHANNEL_DIRECT_MESSAGE: 'channel_dm',
-        GROUP_ADD_ROBOT: 'group', GROUP_DEL_ROBOT: 'group', FRIEND_ADD: 'user', FRIEND_DEL: 'user'
+        GROUP_ADD_ROBOT: 'group', GROUP_DEL_ROBOT: 'group', FRIEND_ADD: 'user', FRIEND_DEL: 'user',
+        GROUP_MESSAGE_CREATE: 'group'
     }
 
     _IGNORE_ERROR_CODES = [11293, 40054002, 40054003]
@@ -87,7 +90,7 @@ class MessageEvent:
     @classmethod
     def _init_type_sets(cls):
         if cls._MSG_TYPES_NEED_MSG_ID is None:
-            cls._MSG_TYPES_NEED_MSG_ID = frozenset([cls.GROUP_MESSAGE, cls.DIRECT_MESSAGE, cls.CHANNEL_MESSAGE, cls.CHANNEL_DIRECT_MESSAGE])
+            cls._MSG_TYPES_NEED_MSG_ID = frozenset([cls.GROUP_MESSAGE, cls.DIRECT_MESSAGE, cls.CHANNEL_MESSAGE, cls.CHANNEL_DIRECT_MESSAGE, cls.GROUP_MESSAGE_CREATE])
             cls._MSG_TYPES_NEED_EVENT_ID = frozenset([cls.INTERACTION, cls.GROUP_ADD_ROBOT])
             cls._MSG_TYPES_NO_RECORD = frozenset([cls.GROUP_DEL_ROBOT, cls.FRIEND_DEL])
             cls._MSG_TYPES_NEED_EVENT_PREFIX = frozenset([cls.GROUP_ADD_ROBOT, cls.FRIEND_ADD])
@@ -185,6 +188,22 @@ class MessageEvent:
         self.group_id = self.get('d/group_id')
         self.guild_id = None
         self.is_group, self.is_private = True, False
+
+    def _parse_group_message_create(self):
+        self.message_type = self.GROUP_MESSAGE_CREATE
+        self.content = self.sanitize_content(self.get('d/content'))
+        img = self._extract_image_from_attachments(self.get('d/attachments'))
+        if img:
+            self.content = f"{self.content}{img}" if self.content else img
+        self.user_id, self.union_openid, self.raw_user_id = _swap_ids(
+            self.get('d/author/id'), self.get('d/author/union_openid'), USE_UNION_ID_FOR_GROUP)
+        self.author_username = self.get('d/author/username')
+        self.group_id = self.get('d/group_id') or self.get('d/group_openid')
+        self.guild_id = None
+        self.is_group, self.is_private = True, False
+        mentions = self.get('d/mentions')
+        self.mentions = mentions if isinstance(mentions, list) else []
+        self.is_at_bot = any(m.get('is_you', False) for m in self.mentions)
 
     def _parse_direct_message(self):
         self.message_type = self.DIRECT_MESSAGE

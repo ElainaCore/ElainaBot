@@ -23,6 +23,7 @@ DIRECT_MESSAGE = 'C2C_MESSAGE_CREATE'
 INTERACTION = 'INTERACTION_CREATE'
 CHANNEL_MESSAGE = 'AT_MESSAGE_CREATE'
 GROUP_ADD_ROBOT = 'GROUP_ADD_ROBOT'
+GROUP_MESSAGE_CREATE = 'GROUP_MESSAGE_CREATE'
 
 def _handle_welcome(event, **kwargs):
     """群欢迎消息处理"""
@@ -103,7 +104,7 @@ def _handle_api_error(event, **kwargs):
             "msg_seq": random.randint(10000, 999999),
             "markdown": {"content": user_tip}
         }
-        if event.message_type in (GROUP_MESSAGE, DIRECT_MESSAGE):
+        if event.message_type in (GROUP_MESSAGE, DIRECT_MESSAGE, GROUP_MESSAGE_CREATE):
             error_payload["msg_id"] = event.message_id
         elif event.message_type in (INTERACTION, GROUP_ADD_ROBOT):
             error_payload["event_id"] = event.get('id') or ""

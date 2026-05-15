@@ -29,7 +29,7 @@ _logger = logging.getLogger('ElainaBot.core.PluginManager')
 _TIMESTAMP_FORMAT = '%Y-%m-%d %H:%M:%S'
 _ID_COMMAND_PATTERN = re.compile(r'^/?我的id$')
 _LOG_TYPE_ERROR = 'error'
-_GROUP_EVENT_TYPES = frozenset(['GROUP_AT_MESSAGE_CREATE', 'AT_MESSAGE_CREATE'])
+_GROUP_EVENT_TYPES = frozenset(['GROUP_AT_MESSAGE_CREATE', 'AT_MESSAGE_CREATE', 'GROUP_MESSAGE_CREATE'])
 _INTERACTION_EVENT = 'INTERACTION_CREATE'
 _DEFAULT_GROUP_ID = 'c2c'
 _BLACKLIST_RELOAD_INTERVAL = 60
@@ -49,6 +49,18 @@ try:
     _group_blacklist_enabled = GROUP_BLACKLIST_ENABLED
 except ImportError:
     _group_blacklist_enabled = False
+
+try:
+    from config import MENTION_MATCH_WITHOUT_AT
+    _mention_match_without_at = MENTION_MATCH_WITHOUT_AT
+except ImportError:
+    _mention_match_without_at = False
+
+try:
+    from config import MENTION_WHITELIST_GROUPS
+    _mention_whitelist_groups_set = frozenset(MENTION_WHITELIST_GROUPS)
+except ImportError:
+    _mention_whitelist_groups_set = frozenset()
 
 def _log_error(error_msg, error_trace=None):
     if error_trace:
@@ -378,11 +390,12 @@ class PluginManager:
             for pattern, handler_info in handlers.items():
                 if isinstance(handler_info, str):
                     method_name = handler_info
-                    owner_only = group_only = False
+                    owner_only = group_only = ignore_mention_check = False
                 else:
                     method_name = handler_info.get('handler')
                     owner_only = handler_info.get('owner_only', False)
                     group_only = handler_info.get('group_only', False)
+                    ignore_mention_check = handler_info.get('ignore_mention_check', False)
                 
                 if not hasattr(instance, method_name):
                     continue
@@ -408,7 +421,8 @@ class PluginManager:
                     'group_only': group_only,
                     'original_pattern': pattern,
                     'from_instance': True,
-                    'instance_method': method_name
+                    'instance_method': method_name,
+                    'ignore_mention_check': ignore_mention_check
                 }
                 handlers_count += 1
                 
@@ -730,11 +744,12 @@ class PluginManager:
         for pattern, handler_info in handlers.items():
             if isinstance(handler_info, str):
                 handler_name = handler_info
-                owner_only = group_only = False
+                owner_only = group_only = ignore_mention_check = False
             else:
                 handler_name = handler_info.get('handler')
                 owner_only = handler_info.get('owner_only', False)
                 group_only = handler_info.get('group_only', False)
+                ignore_mention_check = handler_info.get('ignore_mention_check', False)
                 
             enhanced_pattern = cls._enhance_pattern(pattern)
             compiled_regex = cls._compile_and_cache_regex(enhanced_pattern)
@@ -746,7 +761,8 @@ class PluginManager:
                 'handler': handler_name,
                 'owner_only': owner_only,
                 'group_only': group_only,
-                'original_pattern': pattern
+                'original_pattern': pattern,
+                'ignore_mention_check': ignore_mention_check
             }
             handlers_count += 1
         
@@ -858,7 +874,7 @@ class PluginManager:
     
     @classmethod
     def reload_config_status(cls):
-        global _maintenance_mode_enabled, _blacklist_enabled, _group_blacklist_enabled, _send_default_response, _OWNER_IDS_SET
+        global _maintenance_mode_enabled, _blacklist_enabled, _group_blacklist_enabled, _send_default_response, _OWNER_IDS_SET, _mention_match_without_at, _mention_whitelist_groups_set
         try:
             import importlib
             import config as config_module
@@ -869,11 +885,13 @@ class PluginManager:
             _OWNER_IDS_SET = frozenset(config_module.OWNER_IDS)
             _blacklist_enabled = getattr(config_module, 'BLACKLIST_ENABLED', False)
             _group_blacklist_enabled = getattr(config_module, 'GROUP_BLACKLIST_ENABLED', False)
+            _mention_match_without_at = getattr(config_module, 'MENTION_MATCH_WITHOUT_AT', False)
+            _mention_whitelist_groups_set = frozenset(getattr(config_module, 'MENTION_WHITELIST_GROUPS', []))
             
             if _group_blacklist_enabled:
                 cls.load_group_blacklist()
             
-            add_framework_log(f"配置已更新 - 维护:{_maintenance_mode_enabled}, 黑名单:{_blacklist_enabled}, 群黑名单:{_group_blacklist_enabled}")
+            add_framework_log(f"配置已更新 - 维护:{_maintenance_mode_enabled}, 黑名单:{_blacklist_enabled}, 群黑名单:{_group_blacklist_enabled}, 非@触发:{_mention_match_without_at}")
             return True
         except Exception as e:
             _log_error(f"重新加载配置失败: {str(e)}", traceback.format_exc())
@@ -894,28 +912,40 @@ class PluginManager:
             if getattr(event, 'handled', False):
                 return True
             
-            group_id = getattr(event, 'group_id', None)
-            if _group_blacklist_enabled and group_id:
-                is_blocked, _ = cls.is_group_blacklisted(group_id)
-                if is_blocked:
-                    MessageTemplate.send(event, MSG_TYPE_GROUP_BLACKLIST, group_id=group_id)
-                    return True
-            
+            # GROUP_MESSAGE_CREATE 跳过黑名单/维护/默认回复
+            is_group_msg_create = (getattr(event, 'message_type', None) == 'GROUP_MESSAGE_CREATE')
             user_id = getattr(event, 'user_id', None)
-            if _blacklist_enabled and user_id:
-                is_blocked, reason = cls.is_blacklisted(user_id)
-                if is_blocked:
-                    content = getattr(event, 'content', '')
-                    if not (content and _ID_COMMAND_PATTERN.match(content.strip())):
-                        MessageTemplate.send(event, MSG_TYPE_BLACKLIST, reason=reason)
-                        return True
             
-            if _maintenance_mode_enabled and not cls.can_user_bypass_maintenance(user_id):
-                MessageTemplate.send(event, MSG_TYPE_MAINTENANCE)
-                return True
+            if not is_group_msg_create:
+                group_id = getattr(event, 'group_id', None)
+                if _group_blacklist_enabled and group_id:
+                    is_blocked, _ = cls.is_group_blacklisted(group_id)
+                    if is_blocked:
+                        MessageTemplate.send(event, MSG_TYPE_GROUP_BLACKLIST, group_id=group_id)
+                        return True
+                
+                if _blacklist_enabled and user_id:
+                    is_blocked, reason = cls.is_blacklisted(user_id)
+                    if is_blocked:
+                        content = getattr(event, 'content', '')
+                        if not (content and _ID_COMMAND_PATTERN.match(content.strip())):
+                            MessageTemplate.send(event, MSG_TYPE_BLACKLIST, reason=reason)
+                            return True
+                
+                if _maintenance_mode_enabled and not cls.can_user_bypass_maintenance(user_id):
+                    MessageTemplate.send(event, MSG_TYPE_MAINTENANCE)
+                    return True
                 
             is_owner = user_id in _OWNER_IDS_SET
             is_group = cls._is_group_chat(event)
+            
+            if is_group_msg_create:
+                is_at_bot = getattr(event, 'is_at_bot', False)
+                if is_at_bot:
+                    return cls._process_message(event, is_owner, is_group, skip_unmatched=True)
+                group_id = getattr(event, 'group_id', None)
+                non_at_restricted = not (_mention_match_without_at or group_id in _mention_whitelist_groups_set)
+                return cls._process_message(event, is_owner, is_group, non_at_restricted=non_at_restricted, skip_unmatched=True)
             
             return cls._process_message(event, is_owner, is_group)
             
@@ -941,7 +971,7 @@ class PluginManager:
             return False
 
     @classmethod
-    def _process_message(cls, event, is_owner, is_group):
+    def _process_message(cls, event, is_owner, is_group, non_at_restricted=False, skip_unmatched=False):
         original_content = event.content
         matched = False
         
@@ -951,7 +981,7 @@ class PluginManager:
         if has_slash_prefix:
             event.content = original_content[1:]
             matched_handlers = cls._find_matched_handlers(
-                event.content, event, is_owner, is_group, permission_denied
+                event.content, event, is_owner, is_group, permission_denied, non_at_restricted
             )
             if matched_handlers:
                 matched = cls._execute_handlers(event, matched_handlers, original_content)
@@ -960,12 +990,12 @@ class PluginManager:
                 
         if not matched:
             matched_handlers = cls._find_matched_handlers(
-                event.content, event, is_owner, is_group, permission_denied
+                event.content, event, is_owner, is_group, permission_denied, non_at_restricted
             )
             if matched_handlers:
                 matched = cls._execute_handlers(event, matched_handlers)
                 
-        if not matched:
+        if not matched and not skip_unmatched:
             matched = cls._handle_unmatched_message(event, permission_denied, original_content)
                     
         return matched
@@ -986,7 +1016,7 @@ class PluginManager:
         return False
 
     @classmethod
-    def _find_matched_handlers(cls, event_content, event, is_owner, is_group, permission_denied=None):
+    def _find_matched_handlers(cls, event_content, event, is_owner, is_group, permission_denied=None, non_at_restricted=False):
         matched_handlers = []
         
         if not cls._handler_patterns_cache:
@@ -997,6 +1027,9 @@ class PluginManager:
             handler_info = handler_cache['handler_info']
             priority = handler_cache['priority']
             pattern = handler_cache['pattern']
+            
+            if non_at_restricted and not handler_info.get('ignore_mention_check', False):
+                continue
             
             match = compiled_regex.search(event_content)
             if not match:
