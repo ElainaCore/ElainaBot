@@ -1,108 +1,58 @@
+# 重要提示
+该旧版 ElainaBot 因架构问题已停止维护，请使用 v2 框架 https://github.com/ElainaCore/ElainaBot_v2
+拥有更全的事件适配，多机器人适配等
+
 <div align="center">
 
 # ElainaBot
-
-ElainaBot 是一个基于 Python 的 QQ 官方机器人框架，支持WH WS连接，插件热更新、内存优化、Web面板监控等特性。
-支持便捷发送Markdown,ark,语音等方法，无需过多构建RAW，适配普通消息与Markdown快捷转换，便捷导入markdown模板。
+ElainaBot 基于 Python 开发的 QQ 官方机器人框架，支持 WH/WS 连接、插件热更新、内存优化、Web监控面板，内置 Markdown/Ark/语音快捷发送封装，支持模板快速导入。
 
 </div>
 
-## ElainaBot 特性
+## 核心特性
+- ✨ 插件化架构，支持插件动态热加载/卸载
+- 🚀 内置 HTTP/数据库连接池，内存自动回收优化
+- 📊 Web 可视化面板：状态、内存、日志实时监控
+- 🖼 多图床上传：B站、QQ频道、腾讯云COS
+- 💾 MySQL 持久化存储，配套数据库连接池
 
-- ✨ **插件化架构**：动态加载与卸载插件，热更新
-- 🚀 **高性能优化**：内置连接池和内存优化，提升运行效率
-- 📊 **Web控制面板**：实时监控系统状态、内存使用和日志
-- 🖼 **多图床支持**：集成B站和QQ频道和cos桶三种图片上传方案
-- 💾 **数据持久化**：MySQL数据库支持，完整的用户数据管理
-- 🔄 **内存管理**：自动垃圾回收机制，优化长期稳定性
+> 项目仅作学习交流，禁止商用及非法使用
 
-项目仅供学习交流使用，严禁用于任何商业用途和非法行为
+## 交流群
+ElainaBot框架交流群：[1085402468](https://qm.qq.com/q/5O3xGoe4so)
 
-## 📢 交流群
-
-如果你在使用过程中遇到问题或有任何建议，欢迎加入我们的交流群：
-
-**ElainaBot框架交流群：[1085402468](https://qm.qq.com/q/5O3xGoe4so)**
-
-
-## 安装教程
-
-<details><summary>手动安装</summary>
-
-> 环境准备：Windows/Linux/MacOS  
-> [Python 3.8+](https://python.org), [MySQL 5.7+](https://mysql.com), [Git](https://git-scm.com)
-
-1. Git Clone 项目
-
+## 手动安装
+环境要求：Windows/Linux/MacOS；Python3.8+、MySQL5.7+、Git
 ```bash
+# 拉取源码
 git clone https://github.com/lengxi-root/ElainaBot.git
 git clone https://gitee.com/lengxi-root/ElainaBot.git
 cd ElainaBot
-```
 
-2. 安装依赖包
-
-```bash
+# 安装依赖
 pip install -r requirements.txt
 ```
+启动后访问面板完成配置：`http://你的ip:5001/web`
+若修改配置端口，访问地址端口同步更换
 
-3. 配置机器人
-
-
-```python
-请进入 http://你的ip:5001/web
-#config的端口改变时，这个端口也要改成你配置的
+## 使用方法
+启动项目后访问面板地址（填入配置的 token）
 ```
-
-</details>
-
-## 使用教程
-
-1. 启动机器人后，访问Web控制面板，可视化配置
-
+http://localhost:端口/web/?token=access_token
 ```
-http://localhost:端口/web/?token=自己设置的access_token
-```
+面板功能：机器人运行状态查看、内存监控、配置管理等
 
-2. 通过Web面板可以：
-   - 实时监控机器人状态
-   - 监控内存使用情况
-   - 等等
-
-## 框架结构
-
+## 项目结构
 ```
 ElainaBot/
-├── config.py                    # 全局配置文件
-├── main.py                      # 主程序入口
-├── requirements.txt             # 项目依赖包
-├── core/                        # 核心功能模块
-│   ├── event/                   # 事件处理系统
-│   │   ├── MessageEvent.py      # 消息事件处理
-│   │   └── markdown_templates.py # Markdown模板定义
-│   └── plugin/                  # 插件管理系统
-│       ├── PluginManager.py     # 插件管理器
-│       └── message_templates.py # 消息模板系统
-├── function/                    # 工具函数库
-│   ├── cos_uploader.py          # 腾讯云COS上传
-│   ├── database.py              # 用户数据库操作
-│   ├── dau_analytics.py         # DAU数据统计
-│   ├── db_pool.py               # 数据库连接池
-│   ├── httpx_pool.py            # HTTP连接池
-│   ├── log_db.py                # 日志数据库
-│    ws_client.py             # WebSocket客户端
-├── plugins/                     # 插件目录
-│   ├── example/                 # 示例插件
-│   │   └── 测试插件.py          # 示例：测试开发插件
-│   └── system/                  # 系统功能插件
-│       ├── 用户统计.py          # 用户数据统计
-│       └── 黑名单.py            # 黑名单管理
-├── web/                         # Web控制面板
-│   └── app.py                   # Flask应用主文件
+├── config.py          # 全局配置
+├── main.py            # 程序入口
+├── requirements.txt   # 依赖清单
+├── core/              # 核心模块
+│   ├── event/         # 事件处理
+│   └── plugin/        # 插件管理器
+├── function/          # 工具库（上传、数据库、连接池、ws客户端等）
+├── plugins/           # 业务插件目录（示例插件/系统插件）
+└── web/
+    └── app.py        # Flask 控制面板服务
 ```
-
-
-
-
-
-
